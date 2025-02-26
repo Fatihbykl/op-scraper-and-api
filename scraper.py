@@ -9,7 +9,7 @@ def get_memory_usage():
     process = psutil.Process(os.getpid())
     return process.memory_info().rss / 1024 / 1024  # MB
 
-SECTION_TAG_NAMES = ["description", "aside", "details", "availability", "location"]
+SECTION_TAG_NAMES = ["description", "aside", "details", "availability", "availability_table", "location"]
 XML_FILE_PATH = "feed.xml"
 OPP_URLS_PATH = "opportunity_urls.txt"
 
@@ -80,10 +80,11 @@ def scrape_url(page_urls: list, entries: ET.Element) -> None:
             aside_elements = page.locator("div.four.columns aside.details").locator("p, ul, h1, h2, h3, h4, h5").all()
             bottom_divs = page.locator("div#content div.container div.eight.columns").all()
             details_elements = bottom_divs[0].locator("h3, ul").all()
-            availability_elements = bottom_divs[1].locator("h1, h2, h3, h4, h5, p, table").all()
+            availability_elements = bottom_divs[1].locator("h1, h2, h3, h4, h5, p").all()
+            availability_table = bottom_divs[1].locator("table").all()
             location_elements = page.locator("div#vp-address p").all()
 
-            elements = [description_elements, aside_elements, details_elements, availability_elements, location_elements]
+            elements = [description_elements, aside_elements, details_elements, availability_elements, availability_table, location_elements]
 
             entry = ET.SubElement(entries, "entry")
             for index, element_list in enumerate(elements):
@@ -113,15 +114,11 @@ def scrape_url(page_urls: list, entries: ET.Element) -> None:
                             entry_string += f"{symbol} {li.inner_text().strip()}\n"
 
                     elif tag_name == "table":
-                        table_elem = ET.SubElement(section, "table")
-                        rows = element.locator("tr").all()
-                        for row in rows:
-                            row_elem = ET.SubElement(table_elem, "row")
-                            cells = row.locator("th, td").all()
-                            for cell in cells:
-                                cell_tag = "header" if cell.evaluate("el => el.tagName.toLowerCase()") == "th" else "cell"
-                                cell_elem = ET.SubElement(row_elem, cell_tag)
-                                cell_elem.text = cell.inner_text().strip()
+                        rows = [[cell.strip() if cell else "" for cell in row.locator("th, td").all_inner_texts()] for row in element.locator("tr").all()]
+                        col_widths = [max(len(row[i]) for row in rows) for i in range(len(rows[0]))]
+                        formatted_rows = ["  ".join(cell.ljust(col_widths[i]) for i, cell in enumerate(row)) for row in rows]
+                        
+                        entry_string += "\n".join(formatted_rows)
 
                     section.text = entry_string
 
